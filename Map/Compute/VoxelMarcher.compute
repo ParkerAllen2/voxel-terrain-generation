@@ -1,0 +1,72 @@
+#pragma kernel March
+
+static const int numThreads = 8;
+
+StructuredBuffer<uint> voxelIds;
+RWStructuredBuffer<uint> meshIndexs;
+
+/*
+* 0 -> top
+* 1 -> bot
+* 2 -> right
+* 3 -> left
+* 4 -> front
+* 5 -> back
+*/
+StructuredBuffer<int> adjacent;
+
+int numVoxelsPerAxis;
+int boundsSizeIndex;
+
+int indexFromCoord(uint x, uint y, uint z) {
+    return z * numVoxelsPerAxis * numVoxelsPerAxis + y * numVoxelsPerAxis + x;
+}
+
+[numthreads(numThreads, numThreads, numThreads)]
+void March(int3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numVoxelsPerAxis || id.y >= numVoxelsPerAxis || id.z >= numVoxelsPerAxis) {
+        return;
+    }
+
+    int index = indexFromCoord(id.x, id.y, id.z);
+    uint voxelId = voxelIds[index];
+    if (voxelId == 0) {
+        meshIndexs[index] = 0;
+        return;
+    }
+
+    uint meshIndex = 0;
+    //top
+    if (id.y == boundsSizeIndex || voxelIds[index + adjacent[0]] == 0) {
+        meshIndex |= 0x1;
+        //meshIndex |= 0x8000000;
+    }
+    //bot
+    if (id.y == 0 || voxelIds[index + adjacent[1]] == 0) {
+        meshIndex |= 0x2;
+        //meshIndex |= 0x4000000;
+    }
+    //right
+    if (id.x == boundsSizeIndex || voxelIds[index + adjacent[2]] == 0) {
+        meshIndex |= 0x4;
+        //meshIndex |= 0x20000000;
+    }
+    //left
+    if (id.x == 0 || voxelIds[index + adjacent[3]] == 0) {
+        meshIndex |= 0x8;
+        //meshIndex |= 0x10000000;
+    }
+    //front
+    if (id.z == boundsSizeIndex || voxelIds[index + adjacent[4]] == 0) {
+        meshIndex |= 0x10;
+        //meshIndex |= 0x80000000;
+    }
+    //back
+    if (id.z == 0 || voxelIds[index + adjacent[5]] == 0) {
+        meshIndex |= 0x20;
+        //meshIndex |= 0x40000000;
+    }
+
+    meshIndexs[index] = meshIndex;
+}

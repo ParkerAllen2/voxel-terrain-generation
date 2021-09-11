@@ -8,21 +8,25 @@ namespace voxel_marching
     {
         MeshFilter meshFilter;
         MeshRenderer meshRenderer;
-        public Material meshMaterial;
 
-        public void AddMeshComponents()
+        public void Awake()
         {
-            meshFilter = gameObject.AddComponent<MeshFilter>();
-            meshRenderer = gameObject.AddComponent<MeshRenderer>();
+            meshFilter = GetComponent<MeshFilter>();
+            meshRenderer = GetComponent<MeshRenderer>();
         }
 
-        public void RenderVoxel(byte sideFlags)
+        public void RenderVoxel(uint id, uint meshIndex)
         {
-            meshRenderer.material = meshMaterial;
+            if(meshIndex == 0 || id == 0)
+            {
+                gameObject.SetActive(false);
+                return;
+            }
+            gameObject.SetActive(true);
             Mesh mesh = meshFilter.mesh;
             mesh.Clear();
-            mesh.vertices = VoxelMeshData.GetVerticies(sideFlags);
-            mesh.triangles = VoxelMeshData.GetTriangles(sideFlags);
+            mesh.vertices = VoxelMeshData.GetVerticies(meshIndex);
+            mesh.triangles = VoxelMeshData.GetTriangles(meshIndex);
             mesh.Optimize();
             mesh.RecalculateNormals();
         }

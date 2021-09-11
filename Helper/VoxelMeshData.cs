@@ -6,7 +6,7 @@ namespace voxel_marching
 {
     public static class VoxelMeshData
     {
-        public static Vector3[] GetVerticies(byte b)
+        public static Vector3[] GetVerticies(uint b)
         {
             Vector3[] arr = new Vector3[verticeTable[b].Length];
             for(int i = 0; i < arr .Length; i++)
@@ -16,7 +16,7 @@ namespace voxel_marching
             return arr;
         }
 
-        public static int[] GetTriangles(byte b)
+        public static int[] GetTriangles(uint b)
         {
             return triangleTable[b];
         }
@@ -31,6 +31,16 @@ namespace voxel_marching
             new Vector3( 1, 0, 1),
             new Vector3( 0, 0, 1),
         };
+
+        /*
+         *  0 => None       0x0
+         *  1 => Top        0x4000000
+         *  2 => Bottom     0x8000000
+         *  4 => right      0x10000000
+         *  8 => left       0x20000000
+         *  16 => Front     0x40000000
+         *  32 => Back      0x80000000
+         */
 
         static readonly int[][] verticeTable =
         {

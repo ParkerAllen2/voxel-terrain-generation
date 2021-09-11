@@ -6,16 +6,23 @@ namespace voxel_marching
 {
     public class VoxelDemo : MonoBehaviour
     {
-        public Material meshMaterial;
         VoxelRenderer voxelRenderer;
         public float stepTime;
 
+        [Range(0, 63)]
+        public byte faces;
+
         private void Start()
         {
-            voxelRenderer = gameObject.AddComponent<VoxelRenderer>();
-            voxelRenderer.AddMeshComponents();
-            voxelRenderer.meshMaterial = meshMaterial;
             StartCoroutine(FlagStepper());
+        }
+
+        void OnValidate()
+        {
+            if (!Application.isPlaying)
+            {
+                voxelRenderer.RenderVoxel(faces, 1);
+            }
         }
 
         IEnumerator FlagStepper()
@@ -23,7 +30,7 @@ namespace voxel_marching
             byte b = 0;
             while(b < 64)
             {
-                voxelRenderer.RenderVoxel(b);
+                voxelRenderer.RenderVoxel(b, 1);
                 b++;
                 yield return new WaitForSeconds(stepTime);
             }
