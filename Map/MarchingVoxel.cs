@@ -4,21 +4,21 @@ using UnityEngine;
 
 namespace voxel_marching
 {
-    public class VoxelMarcher : MonoBehaviour
+    public class MarchingVoxel : MonoBehaviour
     {
         public ComputeShader voxelMarcher;
 
         protected List<ComputeBuffer> buffersToRelease;
 
-        public ComputeBuffer Generate(ComputeBuffer voxelIdBuffer, ComputeBuffer meshIndexBuffer, int numVoxelsPerAxis, int numThreadsPerAxis)
+        public ComputeBuffer Generate(ComputeBuffer voxelIdBuffer, ComputeBuffer voxelDataBuffer, int numVoxelsPerAxis, int numThreadsPerAxis)
         {
             buffersToRelease = new List<ComputeBuffer>();
 
             voxelMarcher.SetBuffer(0, "voxelIds", voxelIdBuffer);
-            voxelMarcher.SetBuffer(0, "meshIndexs", meshIndexBuffer);
+            voxelMarcher.SetBuffer(0, "voxelData", voxelDataBuffer);
             voxelMarcher.SetBuffer(0, "adjacent", GenerateAdjacentBuffer(numVoxelsPerAxis));
             voxelMarcher.SetInt("numVoxelsPerAxis", numVoxelsPerAxis);
-            voxelMarcher.SetFloat("boundsSizeIndex", numVoxelsPerAxis - 1);
+            voxelMarcher.SetInt("boundsSizeIndex", numVoxelsPerAxis - 1);
 
             voxelMarcher.Dispatch(0, numThreadsPerAxis, numThreadsPerAxis, numThreadsPerAxis);
 
@@ -30,7 +30,7 @@ namespace voxel_marching
                 }
             }
 
-            return meshIndexBuffer;
+            return voxelDataBuffer;
         }
 
         ComputeBuffer GenerateAdjacentBuffer(int numVoxelsPerAxis)

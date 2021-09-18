@@ -6,7 +6,6 @@ namespace voxel_marching
 {
     public class DensityMapGenerator : MonoBehaviour
     {
-
         public ComputeShader densityShader;
 
         protected List<ComputeBuffer> buffersToRelease;

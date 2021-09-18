@@ -7,10 +7,10 @@ namespace voxel_marching
     public class NoiseMap : DensityMapGenerator
     {
         public int seed;
-        public int octaves = 1;
+        public int octaves = 8;
         public float lacunarity = 2;
         public float persistence = .5f;
-        public float noiseScale = 1;
+        public float noiseScale = 10;
 
         public override ComputeBuffer Generate(ComputeBuffer voxelIdBuffer, int numVoxelsPerAxis, float boundsSize, Vector3 center, Vector3 offset, float spacing, float minDensity, int numThreadsPerAxis)
         {

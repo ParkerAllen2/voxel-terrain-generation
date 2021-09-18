@@ -9,17 +9,10 @@ float lacunarity;
 float persistence;
 float noiseScale;
 
-[numthreads(numThreads, numThreads, numThreads)]
-void Density(int3 id : SV_DispatchThreadID)
+float CalcDensityAtPoint(int3 id)
 {
-    if (id.x >= numVoxelsPerAxis || id.y >= numVoxelsPerAxis || id.z >= numVoxelsPerAxis) {
-        return;
-    }
-
-    float3 pos = centre + id * spacing - boundsSize / 2;
-
+    float3 pos = center + id * spacing - boundsSize / 2;
     float noise = 0;
-
     float frequency = noiseScale / 100;
     float amplitude = 1;
 
@@ -30,9 +23,20 @@ void Density(int3 id : SV_DispatchThreadID)
         amplitude *= persistence;
         frequency *= lacunarity;
     }
-    int index = indexFromCoord(id.x, id.y, id.z);
+    return noise;
+}
+
+[numthreads(numThreads, numThreads, numThreads)]
+void Density(int3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numVoxelsPerAxis || id.y >= numVoxelsPerAxis || id.z >= numVoxelsPerAxis) {
+        return;
+    }
+
+    float noise = CalcDensityAtPoint(id);
     if (minDensity > noise) {
         return;
     }
+    int index = indexFromCoord(id.x, id.y, id.z);
     voxelIds[index] = 1;
 }

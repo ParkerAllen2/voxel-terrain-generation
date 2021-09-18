@@ -6,6 +6,9 @@ namespace voxel_marching
 {
     public class VoxelRenderer : MonoBehaviour
     {
+        public uint Debug_Id;
+        public uint Debug_meshIndex;
+
         MeshFilter meshFilter;
         MeshRenderer meshRenderer;
 
@@ -17,7 +20,9 @@ namespace voxel_marching
 
         public void RenderVoxel(uint id, uint meshIndex)
         {
-            if(meshIndex == 0 || id == 0)
+            Debug_Id = id;
+            Debug_meshIndex = meshIndex;
+            if (meshIndex == 0 || id == 0)
             {
                 gameObject.SetActive(false);
                 return;

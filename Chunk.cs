@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Collections;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace voxel_marching
 {
@@ -9,108 +11,114 @@ namespace voxel_marching
         const int threadGroupSize = 8;
 
         public VoxelRenderer voxelPrefab;
-        public List<VoxelRenderer> voxelPool;
-        public NoiseMap noiseMap;
-        public VoxelMarcher voxelMarcher;
-        public VoxelMarcherSlow voxelMarcherSlow;
+        List<VoxelRenderer> voxelPool;
 
-        //[Range(1, 32)]
+        // Computes
+        DensityMapGenerator densityMap;
+        MarchingVoxel marchingVoxel;
+
+        // Settings
+        [Min(1)]
         public int numVoxelsPerAxis;
-        int numVoxelsPerAxisSqr;
-        public float spacing;
+        [Min(.001f)]
+        public float spacing = 1;
+        public float minDensity;
+        public Vector3 offset;
+        int numVoxels;
+        int numThreadsPerAxis;
         float boundsSize;
         Vector3 position;
-        public Vector3 offset;
-
-        public float minDensity;
 
         private void Start()
         {
-            numVoxelsPerAxisSqr = numVoxelsPerAxis * numVoxelsPerAxis;
+            Setup();
+            CalculateSettings();
+            StartCoroutine(GenerateDensityMap());
+        }
+
+        void Setup()
+        {
+            densityMap = GetComponent<DensityMapGenerator>();
+            marchingVoxel = GetComponent<MarchingVoxel>();
+            voxelPool = new List<VoxelRenderer>();
+        }
+
+        void CalculateSettings()
+        {
             boundsSize = numVoxelsPerAxis * spacing;
             position = transform.position;
-            voxelPool = new List<VoxelRenderer>();
-
-            GenerateVoxels();
-            //GenerateVoxelsSlow();
+            numVoxels = numVoxelsPerAxis * numVoxelsPerAxis * numVoxelsPerAxis;
+            numThreadsPerAxis = Mathf.CeilToInt(numVoxelsPerAxis / (float)threadGroupSize);
+            ManageVoxelPool();
         }
 
-        private void Update()
+        IEnumerator GenerateDensityMap()
         {
-            //GeneratePoints();
+            ComputeBuffer voxelIdBuffer = new ComputeBuffer(numVoxels, sizeof(uint));
+
+            densityMap.Generate(voxelIdBuffer, numVoxelsPerAxis, boundsSize, position, offset, spacing, minDensity, numThreadsPerAxis);
+
+            AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(voxelIdBuffer);
+
+            yield return new WaitUntil(() => request.done);
+
+            Debug.Log("Chunk Map Generated!");
+            StartCoroutine(March(voxelIdBuffer));
         }
 
-        public void GenerateVoxelsSlow()
+        IEnumerator March(ComputeBuffer voxelIdBuffer)
         {
-            int numPoints = numVoxelsPerAxisSqr * numVoxelsPerAxis;
-            int numThreadsPerAxis = Mathf.CeilToInt(numVoxelsPerAxis / (float)threadGroupSize);
+            ComputeBuffer voxelDataBuffer = new ComputeBuffer(numVoxels, sizeof(uint));
 
-            ComputeBuffer voxelIdBuffer = new ComputeBuffer(numPoints, sizeof(uint));
+            marchingVoxel.Generate(voxelIdBuffer, voxelDataBuffer, numVoxelsPerAxis, numThreadsPerAxis);
 
-            noiseMap.Generate(voxelIdBuffer, numVoxelsPerAxis, boundsSize, position, offset, spacing, minDensity, numThreadsPerAxis);
-            uint[] voxelIds = new uint[numPoints];
-            voxelIdBuffer.GetData(voxelIds);
+            NativeArray<uint> voxelData = new NativeArray<uint>(numVoxels, Allocator.TempJob);
+            AsyncGPUReadbackRequest request = AsyncGPUReadback.RequestIntoNativeArray(ref voxelData, voxelDataBuffer);
+            //AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(voxelDataBuffer);
 
-            uint[] meshIndexs = voxelMarcherSlow.Generate(voxelIds, numVoxelsPerAxis);
+            yield return new WaitUntil(() => request.done);
 
-            voxelIdBuffer.Release();
+            RenderVoxels(request.GetData<uint>().ToArray());
 
-            RenderCubes(voxelIds, meshIndexs);
+            voxelData.Dispose();
+            voxelDataBuffer.Dispose();
+            voxelIdBuffer.Dispose();
+
+            Debug.Log("Voxel Data Ready!");
         }
 
-        public void GenerateVoxels()
+        void RenderVoxels(uint[] voxelData)
         {
-            int numPoints = numVoxelsPerAxisSqr * numVoxelsPerAxis;
-            int numThreadsPerAxis = Mathf.CeilToInt(numVoxelsPerAxis / (float)threadGroupSize);
-
-            ComputeBuffer voxelIdBuffer = new ComputeBuffer(numPoints, sizeof(uint));
-            ComputeBuffer meshIndexBuffer = new ComputeBuffer(numPoints, sizeof(uint));
-
-            noiseMap.Generate(voxelIdBuffer, numVoxelsPerAxis, boundsSize, position, offset, spacing, minDensity, numThreadsPerAxis);
-            uint[] voxelIds = new uint[numPoints];
-            voxelIdBuffer.GetData(voxelIds);
-
-            voxelMarcher.Generate(voxelIdBuffer, meshIndexBuffer, numVoxelsPerAxis, numThreadsPerAxis);
-            uint[] meshIndexs = new uint[numPoints];
-            meshIndexBuffer.GetData(meshIndexs);
-
-            voxelIdBuffer.Release();
-            meshIndexBuffer.Release();
-
-            RenderCubes(voxelIds, meshIndexs);
-        }
-
-        void RenderCubes(uint[] voxelIds, uint[] meshIndexs)
-        {
-            int numVoxels = voxelIds.Length;
-            ManageVoxelPool(numVoxels);
+            int numVoxels = voxelData.Length;
 
             int i;
-            for(i = 0; i < numVoxels; i++)
+            for (i = 0; i < numVoxels; i++)
             {
-                /*uint data = voxelData[i];
+                uint data = voxelData[i];
 
                 uint id = data & 0x3FFFFFF;
-                byte sides = (byte)(~data >> 26);*/
-                voxelPool[i].RenderVoxel(voxelIds[i], meshIndexs[i]);
+                byte meshIndex = (byte)(data >> 26);
+                voxelPool[i].RenderVoxel(id, meshIndex);
             }
 
-            while(i < voxelPool.Count)
+            while (i < voxelPool.Count)
             {
                 voxelPool[i].gameObject.SetActive(false);
                 i++;
             }
+            Debug.Log("Voxels Rendered!");
         }
 
-        void ManageVoxelPool(int numVoxels)
+        void ManageVoxelPool()
         {
+            int numVoxelsPerAxisSqr = numVoxelsPerAxis * numVoxelsPerAxis;
             for (int i = voxelPool.Count; i < numVoxels; i++)
             {
-                voxelPool.Add(Instantiate(voxelPrefab, IndexTo3DSpace(i), Quaternion.identity));
+                voxelPool.Add(Instantiate(voxelPrefab, IndexTo3DSpace(i, numVoxelsPerAxisSqr), Quaternion.identity));
             }
         }
 
-        Vector3 IndexTo3DSpace(int index)
+        Vector3 IndexTo3DSpace(int index, int numVoxelsPerAxisSqr)
         {
             float x = index % numVoxelsPerAxis * spacing;
             float y = (index / numVoxelsPerAxis) % numVoxelsPerAxis * spacing;
@@ -119,4 +127,3 @@ namespace voxel_marching
         }
     }
 }
-

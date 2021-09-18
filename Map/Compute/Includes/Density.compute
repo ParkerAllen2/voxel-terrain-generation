@@ -4,7 +4,7 @@ RWStructuredBuffer<uint> voxelIds;
 
 int numVoxelsPerAxis;
 float boundsSize;
-float3 centre;
+float3 center;
 float3 offset;
 float spacing;
 float minDensity;
