@@ -1,129 +1,83 @@
 using System.Collections;
 using System.Collections.Generic;
-using Unity.Collections;
 using UnityEngine;
-using UnityEngine.Rendering;
 
-namespace voxel_marching
+public class Chunk
 {
-    public class Chunk : MonoBehaviour
+    GameObject meshObject;
+    Vector3 position;
+
+    MeshFilter meshFilter;
+    MeshRenderer meshRenderer;
+    MeshCollider meshCollider;
+
+    LODMesh lodMesh;
+    Biome biome;
+
+    bool generateCollider;
+
+    public Chunk(Biome biome, Vector3 coord, Transform parent, Material mat, bool generateCollider)
     {
-        const int threadGroupSize = 8;
+        DebugCounter.AddDebug("Chunk Created");
+        this.generateCollider = generateCollider;
+        position = coord;
+        this.biome = biome;
 
-        public VoxelRenderer voxelPrefab;
-        List<VoxelRenderer> voxelPool;
+        MapGenerator.RequestMapData(biome, coord, OnMapDataReceived);
 
-        // Computes
-        DensityMapGenerator densityMap;
-        MarchingVoxel marchingVoxel;
+        meshObject = new GameObject("Chunk");
+        meshObject.transform.position = coord;
+        meshObject.transform.SetParent(parent);
 
-        // Settings
-        [Min(1)]
-        public int numVoxelsPerAxis;
-        [Min(.001f)]
-        public float spacing = 1;
-        public float minDensity;
-        public Vector3 offset;
-        int numVoxels;
-        int numThreadsPerAxis;
-        float boundsSize;
-        Vector3 position;
-
-        private void Start()
+        meshFilter = meshObject.AddComponent<MeshFilter>();
+        meshRenderer = meshObject.AddComponent<MeshRenderer>();
+        if(generateCollider)
         {
-            Setup();
-            CalculateSettings();
-            StartCoroutine(GenerateDensityMap());
+            meshCollider = meshObject.AddComponent<MeshCollider>();
         }
 
-        void Setup()
+        meshRenderer.material = mat;
+
+        lodMesh = new LODMesh(1, UpdateTerrainChunk);
+    }
+
+    void OnMapDataReceived(MapData mapData)
+    {
+        DebugCounter.AddDebug("Map Received");
+        lodMesh.RequestMesh(biome, mapData);
+    }
+
+    public void UpdateTerrainChunk()
+    {
+        meshFilter.sharedMesh = lodMesh.mesh;
+    }
+
+    class LODMesh
+    {
+        public Mesh mesh;
+        public bool hasRequestedMesh;
+        public bool hasMesh;
+        int lod;
+        System.Action updateCallback;
+
+        public LODMesh(int lod, System.Action updateCallback)
         {
-            densityMap = GetComponent<DensityMapGenerator>();
-            marchingVoxel = GetComponent<MarchingVoxel>();
-            voxelPool = new List<VoxelRenderer>();
+            this.lod = lod;
+            this.updateCallback = updateCallback;
         }
 
-        void CalculateSettings()
+        void OnMeshDataRecieve(MeshData meshData)
         {
-            boundsSize = numVoxelsPerAxis * spacing;
-            position = transform.position;
-            numVoxels = numVoxelsPerAxis * numVoxelsPerAxis * numVoxelsPerAxis;
-            numThreadsPerAxis = Mathf.CeilToInt(numVoxelsPerAxis / (float)threadGroupSize);
-            ManageVoxelPool();
+            DebugCounter.AddDebug("Mesh Received");
+            Debug.Log("Mesh Received");
+            mesh = meshData.ReducedMesh;
+            updateCallback();
         }
 
-        IEnumerator GenerateDensityMap()
+        public void RequestMesh(Biome biome, MapData mapData)
         {
-            ComputeBuffer voxelIdBuffer = new ComputeBuffer(numVoxels, sizeof(uint));
-
-            densityMap.Generate(voxelIdBuffer, numVoxelsPerAxis, boundsSize, position, offset, spacing, minDensity, numThreadsPerAxis);
-
-            AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(voxelIdBuffer);
-
-            yield return new WaitUntil(() => request.done);
-
-            Debug.Log("Chunk Map Generated!");
-            StartCoroutine(March(voxelIdBuffer));
-        }
-
-        IEnumerator March(ComputeBuffer voxelIdBuffer)
-        {
-            ComputeBuffer voxelDataBuffer = new ComputeBuffer(numVoxels, sizeof(uint));
-
-            marchingVoxel.Generate(voxelIdBuffer, voxelDataBuffer, numVoxelsPerAxis, numThreadsPerAxis);
-
-            NativeArray<uint> voxelData = new NativeArray<uint>(numVoxels, Allocator.TempJob);
-            AsyncGPUReadbackRequest request = AsyncGPUReadback.RequestIntoNativeArray(ref voxelData, voxelDataBuffer);
-            //AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(voxelDataBuffer);
-
-            yield return new WaitUntil(() => request.done);
-
-            RenderVoxels(request.GetData<uint>().ToArray());
-
-            voxelData.Dispose();
-            voxelDataBuffer.Dispose();
-            voxelIdBuffer.Dispose();
-
-            Debug.Log("Voxel Data Ready!");
-        }
-
-        void RenderVoxels(uint[] voxelData)
-        {
-            int numVoxels = voxelData.Length;
-
-            int i;
-            for (i = 0; i < numVoxels; i++)
-            {
-                uint data = voxelData[i];
-
-                uint id = data & 0x3FFFFFF;
-                byte meshIndex = (byte)(data >> 26);
-                voxelPool[i].RenderVoxel(id, meshIndex);
-            }
-
-            while (i < voxelPool.Count)
-            {
-                voxelPool[i].gameObject.SetActive(false);
-                i++;
-            }
-            Debug.Log("Voxels Rendered!");
-        }
-
-        void ManageVoxelPool()
-        {
-            int numVoxelsPerAxisSqr = numVoxelsPerAxis * numVoxelsPerAxis;
-            for (int i = voxelPool.Count; i < numVoxels; i++)
-            {
-                voxelPool.Add(Instantiate(voxelPrefab, IndexTo3DSpace(i, numVoxelsPerAxisSqr), Quaternion.identity));
-            }
-        }
-
-        Vector3 IndexTo3DSpace(int index, int numVoxelsPerAxisSqr)
-        {
-            float x = index % numVoxelsPerAxis * spacing;
-            float y = (index / numVoxelsPerAxis) % numVoxelsPerAxis * spacing;
-            float z = index / numVoxelsPerAxisSqr * spacing;
-            return new Vector3(x, y, z);
+            hasRequestedMesh = true;
+            MeshGenerator.RequestMeshData(biome, mapData, OnMeshDataRecieve);
         }
     }
 }
